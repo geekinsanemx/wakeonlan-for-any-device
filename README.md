@@ -123,6 +123,7 @@ The script performs the following tasks:
   - possible terminal interaction through web page device_ip/terminal for supported devices
 - device_ip/state status page with useful information
 - device/poweron & device/poweroff to power on/off device, including x-header authentication
+- send telemetry data for monitoring purposes
 
 ---
 
