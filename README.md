@@ -26,7 +26,9 @@ The Pico W also verifies the Wi-Fi connection every 10 seconds and attempts to r
 - **NPN Transistor** (e.g., 2N2222 or BC547)
 - **Resistors**:
   - 1kΩ resistor (for transistor base)
+  - 10kΩ resistor (for power device state)
   - 220Ω resistor (common ground for LEDs)
+
 - **LEDs**:
   - Red LED (GP5)
   - Green LED (GP6)
