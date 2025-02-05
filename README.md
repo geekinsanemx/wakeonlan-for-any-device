@@ -62,6 +62,10 @@ Raspberry Pi Pico W (Powered Independently)
 ```
 ---
 
+![image](https://github.com/user-attachments/assets/a11c19eb-2fe2-43be-bb2b-4bba3a75905b)
+![image](https://github.com/user-attachments/assets/79c3de8e-bb15-4e1f-923c-83ee1974432c)
+
+
 ## Software Requirements
 - **CircuitPython** installed on the Raspberry Pi Pico W.
 
