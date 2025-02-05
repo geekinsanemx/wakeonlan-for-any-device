@@ -35,7 +35,6 @@ The Pico W also verifies the Wi-Fi connection every 10 seconds and attempts to r
   - Blue LED (GP7)
 - **External Device** with a power button
 - **Jumper Wires**
-- **Breadboard** (optional)
 
 ---
 
