@@ -1,14 +1,18 @@
 # Raspberry Pi Pico W Wake-on-LAN (WoL) Controller
 
+I started this project due I picked up a ReadyNAS system and managed to install Debian 12 on it, but it looks like there is an existing bug causing the NIC to completely shut down after power off, making me unable to power on remotely once it is already off.
+
+had some time thinking about making a device that can power on another non-smart device in a "smart" way and immediately thought of Wake On Lan, but it can be easily modified by any other way (for example, <ip>/poweron); it depends on your needs. Wake On Lan is easy to implement in any smart device like Alexa, https://www.wolskill.com/ so you can turn on any not-smart device using a combination of this one.
+
+![image](https://github.com/user-attachments/assets/a11c19eb-2fe2-43be-bb2b-4bba3a75905b)
+![image](https://github.com/user-attachments/assets/79c3de8e-bb15-4e1f-923c-83ee1974432c)
+
 This project uses a **Raspberry Pi Pico W** to listen for **Wake-on-LAN (WoL) magic packets** and simulate pressing the power button of an external device. The Pico W is powered independently, and the project includes three LEDs for status indication:
 - **Red LED**: Indicates Wi-Fi connection issues.
 - **Green LED**: Turns on when the power button is pressed.
 - **Blue LED**: Indicates successful Wi-Fi connection.
 
 The Pico W also verifies the Wi-Fi connection every 10 seconds (configurable) and attempts to reconnect if the connection is lost. Additionally, it uses a **device state detection wire** to check if the external device is already ON and ignores WoL requests if the device is already powered.
-
-![image](https://github.com/user-attachments/assets/a11c19eb-2fe2-43be-bb2b-4bba3a75905b)
-![image](https://github.com/user-attachments/assets/79c3de8e-bb15-4e1f-923c-83ee1974432c)
 
 ---
 
