@@ -4,6 +4,8 @@ import time
 import wifi
 import socketpool
 import os
+import microcontroller
+import ipaddress
 
 # Define GPIO pins
 TRANSISTOR_PIN = digitalio.DigitalInOut(board.GP13)  # GPIO pin to control the transistor (Base)
@@ -22,12 +24,84 @@ GREEN_LED.direction = digitalio.Direction.OUTPUT
 BLUE_LED = digitalio.DigitalInOut(board.GP7)  # Blue LED
 BLUE_LED.direction = digitalio.Direction.OUTPUT
 
-# Replace with the MAC address of the device you want to wake up
-TARGET_MAC = b"\x00\x00\x00\x00\x00\x00"  # Target MAC address: 00:00:00:00:00:00
+# Function to read settings from settings.ini
+def read_settings():
+    # Default values for all settings
+    default_settings = {
+        "TARGET_MAC": "00:00:00:00:00:00",
+        "WIFI_SSID": "your-fallback-wifi-ssid",
+        "WIFI_PASSWORD": "your-fallback-wifi-password",
+        "STATIC_IP": "",
+        "STATIC_SUBNET_MASK": "",
+        "STATIC_GATEWAY": "",
+        "STATIC_DNS": "",
+        "WIFI_FREQ_CHECK": "10",
+        "WIFI_FAILED_ATTEMPTS": "10",
+    }
+
+    settings = default_settings.copy()  # Start with default values
+
+    try:
+        with open("settings.ini", "r") as file:
+            for line in file:
+                line = line.strip()
+                # Skip empty lines and comments (lines starting with #)
+                if line and not line.startswith("#"):
+                    # Split the line into key and value using the first "="
+                    if "=" in line:
+                        key, value = line.split("=", 1)  # Split on the first "="
+                        key = key.strip()
+                        value = value.strip()
+                        # Update the setting if the key exists in defaults
+                        if key in settings:
+                            settings[key] = value
+    except Exception as e:
+        print("Error reading settings.ini:", e)
+        # If there's an error, fall back to default values for all settings
+
+    return settings
+
+# Read settings from settings.ini
+settings = read_settings()
+
+# Convert TARGET_MAC from string to bytes
+TARGET_MAC = bytes.fromhex(settings["TARGET_MAC"].replace(":", ""))
 
 # Wi-Fi credentials
-WIFI_SSID = "your-wifi-ssid"
-WIFI_PASSWORD = "your-wifi-password"
+WIFI_SSID = settings["WIFI_SSID"]
+WIFI_PASSWORD = settings["WIFI_PASSWORD"]
+
+# Static IP settings (optional)
+STATIC_IP = settings["STATIC_IP"]
+STATIC_SUBNET_MASK = settings["STATIC_SUBNET_MASK"]
+STATIC_GATEWAY = settings["STATIC_GATEWAY"]
+STATIC_DNS = settings["STATIC_DNS"]
+
+# WIFI_FREQ_CHECK (socket timeout) and WIFI_FAILED_ATTEMPTS
+WIFI_FREQ_CHECK = int(settings["WIFI_FREQ_CHECK"])  # Default to 10 if not defined
+WIFI_FAILED_ATTEMPTS = int(settings["WIFI_FAILED_ATTEMPTS"])  # Default to 10 if not defined
+
+# Counter for failed Wi-Fi connection attempts
+wifi_failed_attempts = 0
+
+# Function to configure Wi-Fi with static IP or DHCP
+def configure_wifi():
+    if STATIC_IP and STATIC_SUBNET_MASK and STATIC_GATEWAY:
+        try:
+            # Convert strings to ipaddress objects
+            ip = ipaddress.IPv4Address(STATIC_IP)
+            subnet_mask = ipaddress.IPv4Address(STATIC_SUBNET_MASK)
+            gateway = ipaddress.IPv4Address(STATIC_GATEWAY)
+            dns = ipaddress.IPv4Address(STATIC_DNS) if STATIC_DNS else None
+
+            # Configure static IP
+            wifi.radio.set_ipv4_address(ipv4=ip, netmask=subnet_mask, gateway=gateway, ipv4_dns=dns)
+            print("Configured static IP:", ip)
+        except Exception as e:
+            print("Error configuring static IP:", e)
+            print("Falling back to DHCP...")
+    else:
+        print("No static IP settings found. Using DHCP...")
 
 # Function to blink an LED
 def blink_led(led, times=1, delay=0.2):
@@ -61,35 +135,34 @@ def is_wol_magic_packet(packet, target_mac):
             return False
     return True
 
-# Function to verify Wi-Fi connection and reconnect if necessary
-def verify_and_reconnect_wifi():
+# Unified function to handle Wi-Fi connection and reconnection
+def manage_wifi_connection():
+    global wifi_failed_attempts  # Access the global counter
+
     if not wifi.radio.connected:
-        print("Wi-Fi connection lost. Attempting to reconnect...")
+        print("Wi-Fi connection lost. Attempting to connect/reconnect...")
         try:
+            # Configure Wi-Fi (static IP or DHCP)
+            configure_wifi()
+
+            # Connect to Wi-Fi
             wifi.radio.connect(WIFI_SSID, WIFI_PASSWORD)
-            print("Wi-Fi reconnected:", wifi.radio.ipv4_address)
-            blink_led(BLUE_LED, times=2)  # Blink blue LED twice on successful reconnection
+            print("Wi-Fi connected:", wifi.radio.ipv4_address)
+            blink_led(BLUE_LED, times=10)  # Blink blue LED twice on successful connection
+            wifi_failed_attempts = 0  # Reset the counter on successful connection
             return True
         except Exception as e:
-            print("Failed to reconnect to Wi-Fi:", e)
-            blink_led(RED_LED, times=2)  # Blink red LED twice on reconnection failure
+            print("Failed to connect to Wi-Fi:", e)
+            blink_led(RED_LED, times=2)  # Blink red LED twice on connection failure
+            wifi_failed_attempts += 1  # Increment the failed attempts counter
+            if wifi_failed_attempts >= WIFI_FAILED_ATTEMPTS:
+                print("Too many failed attempts. Rebooting device...")
+                blink_led(RED_LED, times=10)
+                microcontroller.reset()  # Reboot the device
             return False
     else:
         blink_led(BLUE_LED, times=2)  # Blink blue LED twice if still connected
         return True
-
-# Connect to Wi-Fi
-def connect_wifi():
-    print("Connecting to Wi-Fi...")
-    try:
-        wifi.radio.connect(WIFI_SSID, WIFI_PASSWORD)
-        print("Wi-Fi connected:", wifi.radio.ipv4_address)
-        blink_led(BLUE_LED, times=2)  # Blink blue LED twice on successful connection
-        return True
-    except Exception as e:
-        print("Failed to connect to Wi-Fi:", e)
-        blink_led(RED_LED, times=2)  # Blink red LED twice on connection failure
-        return False
 
 # Main function to listen for WoL magic packets
 def listen_for_wol():
@@ -101,7 +174,7 @@ def listen_for_wol():
     print("Listening for Wake-on-LAN magic packets...")
     start_time = time.monotonic()  # Track time for Wi-Fi verification
 
-    sock.settimeout(10)  # Set a timeout of 10 seconds
+    sock.settimeout(WIFI_FREQ_CHECK)  # Set a timeout based on WIFI_FREQ_CHECK
 
     while True:
         try:
@@ -119,12 +192,12 @@ def listen_for_wol():
 
         except OSError:  # Raised if the socket times out
             print("No WoL packet received. Checking Wi-Fi status...")
-            verify_and_reconnect_wifi()  # Check Wi-Fi connection
+            manage_wifi_connection()  # Check and manage Wi-Fi connection
 
 # Main program
 if __name__ == "__main__":
     while True:
-        if connect_wifi():  # Attempt to connect to Wi-Fi
+        if manage_wifi_connection():  # initial connect to Wi-Fi
             listen_for_wol()  # Start listening for WoL packets
         else:
-            print("Raspberry Pi Pico W is not connected to Wi-Fi. Red LED will blink twice.")
+            print("Raspberry Pi Pico W is not connected to Wi-Fi")
