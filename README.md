@@ -118,6 +118,15 @@ The script performs the following tasks:
 
 ---
 
+## Features to Add
+- UART TX/RX TTL connection to console connection with the device if supported
+  - possible terminal interaction through web page device_ip/terminal for supported devices
+- device_ip/state status page with useful information
+- device/poweron & device/poweroff to power on/off device, including x-header authentication
+- send telemetry data for monitoring purposes
+
+---
+
 ## License
 This project is licensed under the **GNU GENERAL PUBLIC LICENSE**. See the [LICENSE](LICENSE) file for details.
 
