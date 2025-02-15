@@ -13,7 +13,7 @@ WiFiUDP udp;
 const int udpPort = 9;  // Puerto WoL
 
 // Dirección MAC del dispositivo a monitorear
-uint8_t targetMAC[] = {0xXX, 0xXX, 0xXX, 0xXX, 0xXX, 0xXX};
+uint8_t targetMAC[] = {0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6};
 
 // Configuración del GPIO para el transistor, LEDs y estado del dispositivo
 const int relayPin = 5;
@@ -79,7 +79,7 @@ void checkWakeOnLan() {
     if (packetSize) {
         uint8_t packetBuffer[102];
         udp.read(packetBuffer, sizeof(packetBuffer));
-        
+
         bool match = true;
         for (int i = 6; i < 12; i++) {
             if (packetBuffer[i] != targetMAC[i - 6]) {
@@ -87,7 +87,7 @@ void checkWakeOnLan() {
                 break;
             }
         }
-        
+
         if (match) {
             if (isDeviceOn()) {
                 Serial.println("WoL Packet Received - Device is already ON, ignoring...");
@@ -103,7 +103,7 @@ void handleTelnetPrompt() {
     TelnetStream.print("telnet> ");
     String command = TelnetStream.readStringUntil('\n');
     command.trim();
-    
+
     if (command == "poweron") {
         if (isDeviceOn()) {
             TelnetStream.println("El dispositivo ya está encendido.");
@@ -136,7 +136,7 @@ void handleTelnetPrompt() {
 void handleTelnet() {
     if (TelnetStream.available()) {
         char input = TelnetStream.read();
-        
+
         if (input == 4) {
             TelnetStream.println("Desconectando Telnet...");
             TelnetStream.stop();
@@ -147,15 +147,15 @@ void handleTelnet() {
             inTelnetPrompt = true;
             return;
         }
-        
+
         if (inTelnetPrompt) {
             handleTelnetPrompt();
             return;
         }
-        
+
         String command = TelnetStream.readStringUntil('\n');
         command.trim();
-        
+
         if (!authenticated) {
             if (command == "admin/passw0rd") {
                 TelnetStream.println("Login exitoso!");
@@ -168,7 +168,7 @@ void handleTelnet() {
 
         externalDevice.println(command);
     }
-    
+
     while (externalDevice.available()) {
         TelnetStream.write(externalDevice.read());
     }
@@ -177,7 +177,7 @@ void handleTelnet() {
 void setup() {
     Serial.begin(115200);
     externalDevice.begin(115200, SERIAL_8N1, uartRx, uartTx);
-    
+
     pinMode(relayPin, OUTPUT);
     pinMode(greenLed, OUTPUT);
     pinMode(redLed, OUTPUT);
@@ -198,7 +198,7 @@ void setup() {
     blinkLED(blueLed, 10, 200);
     udp.begin(udpPort);
     TelnetStream.begin();
-    
+
     runner.init();
     runner.addTask(taskCheckWiFi);
     taskCheckWiFi.enable();
