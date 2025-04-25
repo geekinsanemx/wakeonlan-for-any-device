@@ -1,152 +1,115 @@
-# Raspberry Pi Pico W Wake-on-LAN (WoL) Controller
+# ESP32 Wake-on-LAN (WoL) Controller with Telnet Server
 
-I started this project due I picked up a ReadyNAS system and managed to install Debian 12 on it, but it looks like there is an existing bug causing the NIC to completely shut down after power off, making me unable to power on remotely once it is already off.
-
-had some time thinking about making a device that can power on another non-smart device in a "smart" way and immediately thought of Wake On Lan, but it can be easily modified by any other way (for example, <ip>/poweron); it depends on your needs. Wake On Lan is easy to implement in any smart device like Alexa, https://www.wolskill.com/ so you can turn on any not-smart device using a combination of this one.
-
-![image](https://github.com/user-attachments/assets/a11c19eb-2fe2-43be-bb2b-4bba3a75905b)
-![image](https://github.com/user-attachments/assets/79c3de8e-bb15-4e1f-923c-83ee1974432c)
-
-# Wake-on-LAN (WoL) Controller for Any Device
-
-This project provides a solution to remotely power on a non-smart device using Wake-on-LAN (WoL). It can be implemented using either a Raspberry Pi Pico W or an ESP32 Dev Module. Both boards listen for WoL magic packets and simulate pressing the power button of an external device. The project includes status LEDs for visual feedback and supports Wi-Fi connection verification, device state detection, and automatic reconnection.
+This project provides a solution to remotely power on and manage a non-smart device using an ESP32. The device listens for WoL magic packets and includes a Telnet server for remote management. It can simulate pressing the power button of an external device and provides status monitoring.
 
 ## Features
 
-- **Wake-on-LAN Listener**: Listens for WoL magic packets on UDP port 9.
-- **Power Button Simulation**: Simulates pressing the power button of an external device using a transistor.
-- **Device State Detection**: Checks if the external device is already ON and ignores WoL requests if the device is powered.
-- **Wi-Fi Connection Verification**: Checks the Wi-Fi connection periodically (configurable) and reconnects if necessary.
-- **Static IP Configuration**: Supports static IP configuration (optional, falls back to DHCP if not configured).
-- **Reboot on Wi-Fi Failure**: Automatically reboots the device after a configurable number of failed Wi-Fi connection attempts.
-- **Status LEDs**:
-  - **Red LED**: Indicates Wi-Fi connection issues.
-  - **Green LED**: Turns on when the power button is pressed.
-  - **Blue LED**: Indicates successful Wi-Fi connection.
+- **Wake-on-LAN Listener**: Listens for WoL magic packets on UDP port 9
+- **Power Button Simulation**: Simulates pressing the power button via relay control
+- **Device Status Monitoring**: Detects if the external device is ON/OFF via status pin
+- **Telnet Server**: Provides remote command interface on port 23
+- **UART Console**: Direct serial access to connected device via hardware UART pins
+- **WiFi Management**: Automatic reconnection and system reboot on persistent failures
+- **Visual Feedback**: Multiple LEDs for status indication (onboard + RGB LEDs)
 
 ## Hardware Requirements
 
-### For Raspberry Pi Pico W:
-- Raspberry Pi Pico W
-- NPN Transistor (e.g., 2N2222 or BC547)
-- Resistors:
-  - 1kΩ resistor (for transistor base)
-  - 10kΩ resistor (for power device state)
-  - 220Ω resistor (common ground for LEDs)
-- LEDs:
-  - Red LED (GP5)
-  - Green LED (GP6)
-  - Blue LED (GP7)
-- External Device with a power button
-- Jumper Wires
-
-### For ESP32 Dev Module:
 - ESP32 Dev Module
 - NPN Transistor (e.g., 2N2222 or BC547)
 - Resistors:
   - 1kΩ resistor (for transistor base)
   - 10kΩ resistor (for power device state)
-  - 220Ω resistor (common ground for LEDs)
+  - 220Ω resistors for LEDs
 - LEDs:
-  - Red LED (GP19)
-  - Green LED (GP18)
-  - Blue LED (GP21)
-- External Device with a power button
-- Jumper Wires
+  - Green LED (GP21)
+  - Red LED (GP22)
+  - Blue LED (GP23)
+- 2N2222 Transistor
+- External Device with power button
+- Jumper wires
 
 ## Wiring Diagram
 
-### Raspberry Pi Pico W
-```
-Raspberry Pi Pico W (Powered Independently)
-   +3.3V (3V3) ----------------------------------- 3V3 (Raspberry Pi Pico W)
-   GND (Ground) ---------------------------------- GND (Raspberry Pi Pico W)
+ESP32 Dev Module
 
-   GP5 ---------------------------------| Red LED (Anode)
-                                        |
-   GP6 ---------------------------------| Green LED (Anode)
-                                        |
-   GP7 ---------------------------------| Blue LED (Anode)
-                                        |
-   [Common Ground for LEDs] ------------|----[220Ω]---- GND
++3.3V ----------------------------------- 3V3
+GND ------------------------------------- GND
+
+GPIO18 --------------------------------[2N2222 Transistor]
+GPIO19 --------------------------------[Device Status Input (3.3V when ON)]
+
+GPIO21 ---------------------------------[Green LED]
+GPIO22 ---------------------------------[Red LED]
+GPIO23 ---------------------------------[Blue LED]
+[Common Ground for LEDs] ---------------[220Ω]---- GND
+
+GPIO16 (UART RX) -----------------------[To Device TX]
+GPIO17 (UART TX) -----------------------[To Device RX]
+
+
+2N2222 Transistor Wiring
 
                                         |---[Collector (C)]---[Wire 1 of Power Button / 3.3v / Powered side ]
-   GP13 ------[1kΩ]------[(2N2222)]-----|---[Base (B)]
+   GPIO18 ------[1kΩ]------[(2N2222)]-----|---[Base (B)]
                                         |---[Emitter (E)]-----[Wire 2 of Power Button / GND side)
 
-   GP14 ------[10kΩ]--------------------| Device State Detection Wire [3.3v]
-```
+## Telnet Commands
 
-### ESP32 Dev Module
-```
-ESP32 Dev Module (Powered Independently)
-   +3.3V (3V3) ----------------------------------- 3V3 (ESP32 Dev Module)
-   GND (Ground) ---------------------------------- GND (ESP32 Dev Module)
+Connect to the ESP32 via Telnet (port 23) to access these commands:
+- `status` - Show system status (WiFi, IP, MAC, device state)
+- `reset` - Restart the ESP32
+- `console` - Enter UART console mode with connected device
+- `poweron` - Turn device on (if off)
+- `poweroff` - Turn device off (if on)
+- `poweron -c` - Turn device on and enter console mode
+- `poweroff -f` - Force power off (long press)
+- `exit` - Disconnect from Telnet session
 
-   GP19 ---------------------------------| Red LED (Anode)
-                                         |
-   GP18 ---------------------------------| Green LED (Anode)
-                                         |
-   GP21 ---------------------------------| Blue LED (Anode)
-                                         |
-   [Common Ground for LEDs] -------------|----[220Ω]---- GND
+## UART Console Access
 
-                                         |---[Collector (C)]---[Wire 1 of Power Button / 3.3v / Powered side ]
-   GP5 --------[1kΩ]------[(2N2222)]-----|---[Base (B)]
-                                         |---[Emitter (E)]-----[Wire 2 of Power Button / GND side)
-
-   GP22 --------[10kΩ]-------------------| Device State Detection Wire [3.3v]
-```
-
-## Software Requirements
-
-### For Raspberry Pi Pico W:
-- CircuitPython installed on the Raspberry Pi Pico W.
-- CircuitPython Library Bundle for required libraries.
-
-### For ESP32 Dev Module:
-- Arduino IDE or PlatformIO for ESP32 development.
-- WiFi.h and WiFiUdp.h libraries for Wi-Fi and UDP functionality.
+The ESP32 provides direct UART pass-through to the connected device:
+- **UART Pins**: GPIO16 (RX), GPIO17 (TX)
+- **Baud Rate**: 115200
+- **Access Methods**:
+  1. Via Telnet `console` command
+  2. Direct serial connection to ESP32's UART pins
+- **Exit Console**: Press Ctrl+Q (ASCII 17)
 
 ## Setup Instructions
 
-### For Raspberry Pi Pico W:
-1. **Install CircuitPython**
-2. **Install Required Libraries**
-3. **Upload the Code**
-4. **Connect the Hardware**
+1. Update the code with your WiFi credentials:
+```
+   #define WIFI_SSID "YOUR_SSID"
+   #define WIFI_PASS "YOUR_PASSWORD"
+```
 
-### For ESP32 Dev Module:
-1. **Install Arduino IDE or PlatformIO**
-2. **Upload the Code**
-3. **Connect the Hardware**
+Configure the target MAC address:
+```
+uint8_t targetMAC[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05};
+```
 
-## Power On and Operation
-1. Power on the device.
-2. If the Wi-Fi credentials are correct, the blue LED blinks twice and starts listening for WoL packets.
-3. If Wi-Fi fails, the red LED blinks twice.
-4. If a WoL packet is received:
-   - If the external device is OFF, the green LED turns on and the power button is pressed.
-   - If the device is ON, the WoL request is ignored.
+2. Upload the code to your ESP32 using Arduino IDE or PlatformIO
 
-## Features to Add
-- **UART TX/RX TTL Connection**
-- **Web Interface**
-- **Telemetry Data**
-- **Dynamic Configuration**
-- **OTA Updates**
-- **Multi-Device Support**
-- **Energy Monitoring**
-- **Integration with Smart Home Systems**
-- **Enhanced Security**
-- **Customizable LED Patterns**
-- **Logging and Analytics**
+3. Connect the hardware as per wiring diagram
+
+4. Power on the system - the onboard LED will blink when WiFi connects
+- Operation When powered:
+- Blue LED indicates WiFi status
+- Onboard LED (GP2) blinks during WiFi connection
+- Red/Green LEDs show device power state
+
+5. To wake device:
+- Send WoL magic packet to UDP port 9
+- OR use Telnet poweron command
+- For direct console access:
+- Connect to device UART via GPIO16/17
+- OR use Telnet console command
 
 ## License
 This project is licensed under the GNU GENERAL PUBLIC LICENSE. See the LICENSE file for details.
 
 ## Acknowledgments
-Inspired by Wake-on-LAN functionality and the capabilities of the Raspberry Pi Pico W and ESP32 Dev Module.
+Inspired by Wake-on-LAN functionality and ESP32 capabilities
 
 ## Contributing
 Contributions are welcome! Please open an issue or submit a pull request for any improvements or bug fixes.
