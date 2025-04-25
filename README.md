@@ -31,7 +31,7 @@ This project provides a solution to remotely power on and manage a non-smart dev
 ## Wiring Diagram
 
 ESP32 Dev Module
-
+```
 +3.3V ----------------------------------- 3V3
 GND ------------------------------------- GND
 
@@ -45,13 +45,14 @@ GPIO23 ---------------------------------[Blue LED]
 
 GPIO16 (UART RX) -----------------------[To Device TX]
 GPIO17 (UART TX) -----------------------[To Device RX]
-
+```
 
 2N2222 Transistor Wiring
-
+```
                                         |---[Collector (C)]---[Wire 1 of Power Button / 3.3v / Powered side ]
    GPIO18 ------[1kΩ]------[(2N2222)]-----|---[Base (B)]
                                         |---[Emitter (E)]-----[Wire 2 of Power Button / GND side)
+```
 
 ## Telnet Commands
 
