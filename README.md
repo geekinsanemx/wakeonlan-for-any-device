@@ -36,7 +36,7 @@ ESP32 Dev Module
 GND ------------------------------------- GND
 
 GPIO18 --------------------------------[2N2222 Transistor]
-GPIO19 --------------------------------[Device Status Input (3.3V when ON)]
+GPIO19 -------------[10Ω]--------------[Device Status Input (3.3V when ON)]
 
 GPIO21 ---------------------------------[Green LED]
 GPIO22 ---------------------------------[Red LED]
