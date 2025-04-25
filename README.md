@@ -2,6 +2,8 @@
 
 This project provides a solution to remotely power on and manage a non-smart device using an ESP32. The device listens for WoL magic packets and includes a Telnet server for remote management. It can simulate pressing the power button of an external device and provides status monitoring.
 
+![image](https://github.com/user-attachments/assets/76ba4802-1771-4245-a3b3-d3f26970409a)
+
 ## Features
 
 - **Wake-on-LAN Listener**: Listens for WoL magic packets on UDP port 9
