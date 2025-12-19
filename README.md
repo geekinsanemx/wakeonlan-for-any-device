@@ -2,6 +2,8 @@
 
 Multi-platform Wake-on-LAN (WoL) solution to remotely power on and manage non-smart devices. Supports ESP32 variants with Telnet server and Raspberry Pi Pico W with CircuitPython implementations.
 
+![image](https://github.com/user-attachments/assets/76ba4802-1771-4245-a3b3-d3f26970409a)
+
 ## Supported Hardware Platforms
 
 | Platform | Language | Status | Key Features |
