@@ -1,5 +1,20 @@
+// ESP32-S3 Zero Mini - WoL Telnet Command Server
+// Version: 1.0.8
+//
+// Changelog:
+// v1.0.8 - Reverted to simple Ctrl+Q escape only, all other chars pass through
+// v1.0.7 - Fixed console escape: Ctrl+] and Ctrl+D exit cleanly, Ctrl+C passes through
+// v1.0.6 - Added multiple console exit methods: Ctrl+Q, Ctrl+D, ~~~
+// v1.0.5 - Fixed UART pins (RX=7, TX=8), poweroff now double press
+// v1.0.4 - Fixed NeoPixel colors: WiFi=BLUE, Power=GREEN, Error=RED
+// v1.0.3 - Added monitoring MAC to status, changed MAC format to colons
+// v1.0.2 - Removed manual watchdog init (Arduino core auto-manages it)
+// v1.0.1 - Fixed ESP-IDF 5.x compatibility (esp_task_wdt_init, flush, accept)
+// v1.0.0 - ESP32-S3 Zero Mini adaptation with NeoPixel LED support
+
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <Adafruit_NeoPixel.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_task_wdt.h"
@@ -12,23 +27,22 @@
 #define UDP_PORT 9  // Puerto WoL
 
 // Dirección MAC del dispositivo a monitorear
-uint8_t targetMAC[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05};
+uint8_t targetMAC[] = {0x28, 0xc6, 0x8e, 0xd5, 0xc8, 0xdc};
 
-// Configuración del GPIO para el transistor, LEDs y estado del dispositivo
-#define RELAY_PIN 18
-#define DEVICE_STATUS_PIN 19  // Pin que recibe 3.3V cuando el dispositivo está encendido
-#define GREEN_LED 21
-#define RED_LED 22
-#define BLUE_LED 23
+// GPIO Configuration for ESP32-S3 Zero Mini
+#define PIN_POWER_CTRL 3
+#define PIN_DEVICE_STATUS 2
+#define PIN_UART_TX 7    // ESP TX → Device RX (GPIO 7)
+#define PIN_UART_RX 8    // ESP RX → Device TX (GPIO 8)
 
 
-// Onboard LED
-#define ONBOARD_LED 2  // GPIO 2 (onboard LED)
+// NeoPixel Configuration
+#define NEOPIXEL_PIN 21
+#define NEOPIXEL_COUNT 1
+#define NEOPIXEL_BRIGHTNESS 60
 
 // Configuración Telnet
 #define TELNET_PORT 23
-#define UART_RX_PIN 16
-#define UART_TX_PIN 17
 
 // Variables
 int wifiReconnectAttempts = 0;
@@ -39,50 +53,61 @@ WiFiUDP udp;
 WiFiServer telnetServer(TELNET_PORT);
 WiFiClient telnetClient;
 
-// Función para parpadear LED
-void blinkLED(int pin, int times, int delayMs) {
+// NeoPixel object
+Adafruit_NeoPixel neopixel(NEOPIXEL_COUNT, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
+
+void setNeoPixelColor(uint8_t r, uint8_t g, uint8_t b) {
+    neopixel.setPixelColor(0, neopixel.Color(r, g, b));
+    neopixel.show();
+}
+
+void blinkNeoPixel(uint8_t r, uint8_t g, uint8_t b, int times, int delayMs) {
     for (int i = 0; i < times; i++) {
-        digitalWrite(pin, HIGH);
+        setNeoPixelColor(r, g, b);
         vTaskDelay(pdMS_TO_TICKS(delayMs));
-        digitalWrite(pin, LOW);
+        setNeoPixelColor(0, 0, 0);
         vTaskDelay(pdMS_TO_TICKS(delayMs));
     }
 }
 
-// Función para verificar si el dispositivo está encendido
 bool isDeviceOn() {
-    return digitalRead(DEVICE_STATUS_PIN) == HIGH;
+    return digitalRead(PIN_DEVICE_STATUS) == HIGH;
 }
 
-// Función para simular el botón de encendido/apagado
+String formatMAC(uint8_t* mac) {
+    char buffer[18];
+    snprintf(buffer, sizeof(buffer), "%02x:%02x:%02x:%02x:%02x:%02x",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    return String(buffer);
+}
+
 void power_button(int delayMs) {
-    digitalWrite(ONBOARD_LED, HIGH); // Encender LED verde mientras se pulsa el botón
-    digitalWrite(RELAY_PIN, HIGH); // Pulsar el botón
+    setNeoPixelColor(NEOPIXEL_BRIGHTNESS, 0, 0);
+    digitalWrite(PIN_POWER_CTRL, HIGH);
     vTaskDelay(pdMS_TO_TICKS(delayMs));
-    digitalWrite(RELAY_PIN, LOW); // Soltar el botón
-    digitalWrite(ONBOARD_LED, LOW); // Apagar LED verde
+    digitalWrite(PIN_POWER_CTRL, LOW);
+    setNeoPixelColor(0, 0, 0);
 }
 
-// Función para verificar la conexión WiFi
 void checkWiFiConnection(void *parameter) {
     while (true) {
         if (WiFi.status() != WL_CONNECTED) {
             Serial.println("WiFi desconectado, intentando reconectar...");
-            blinkLED(ONBOARD_LED, 10, 200);  // Blink onboard LED
+            blinkNeoPixel(0, 0, NEOPIXEL_BRIGHTNESS, 10, 200);
             WiFi.disconnect();
             WiFi.reconnect();
             wifiReconnectAttempts++;
             if (wifiReconnectAttempts >= 10) {
                 Serial.println("No se pudo reconectar. Reiniciando ESP32...");
-                blinkLED(ONBOARD_LED, 1, 3000);  // Fast blink before restart
+                blinkNeoPixel(0, NEOPIXEL_BRIGHTNESS, 0, 1, 3000);
                 ESP.restart();
             }
         } else {
-            blinkLED(ONBOARD_LED, 2, 200);  // Parpadea LED onboard (conectado)
+            blinkNeoPixel(0, 0, NEOPIXEL_BRIGHTNESS, 2, 200);
             wifiReconnectAttempts = 0;
             Serial.println("WiFi connection is OK.");
         }
-        vTaskDelay(pdMS_TO_TICKS(15000));  // Chequea cada 15 segundos
+        vTaskDelay(pdMS_TO_TICKS(15000));
     }
 }
 
@@ -107,8 +132,8 @@ void checkWakeOnLan(void *parameter) {
                     Serial.println("WoL Packet Received - Device is already ON, ignoring...");
                 } else {
                     Serial.println("WoL Packet Received - Activating Device");
-                    power_button(500);  // Simula presionar el botón de encendido
-                    blinkLED(ONBOARD_LED, 10, 100);  // Blink onboard LED to indicate activation
+                    power_button(500);
+                    blinkNeoPixel(NEOPIXEL_BRIGHTNESS, 0, 0, 10, 100);
                 }
             }
         }
@@ -116,40 +141,36 @@ void checkWakeOnLan(void *parameter) {
     }
 }
 
-// Function to handle UART console mode
 void handleUARTConsole(WiFiClient &client) {
-    Serial1.begin(115200, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);
-    client.println("Entering UART Console mode. Press 'Ctrl+Q' to exit.");
+    Serial1.begin(115200, SERIAL_8N1, PIN_UART_RX, PIN_UART_TX);
+    client.println("Entering UART Console mode. Press Ctrl+Q to exit.");
 
     bool inConsoleMode = true;
     uint8_t uartBuffer[256];
     uint8_t telnetBuffer[256];
     unsigned long lastActivity = millis();
-    
-    // Disable other tasks' interruptions during console mode
+
     vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);
 
     while (inConsoleMode && client.connected()) {
         bool dataProcessed = false;
-        
-        // Handle telnet to UART direction (bulk read/write)
+
         if (client.available()) {
             size_t bytesRead = 0;
             while (client.available() && bytesRead < sizeof(telnetBuffer)) {
                 uint8_t c = client.read();
-                
-                // Skip Telnet negotiation bytes (0xFF)
+
                 if (c == 255) continue;
-                
-                if (c == 17) { // Ctrl+Q
+
+                if (c == 17) {
                     client.println("\nExited UART console.");
                     inConsoleMode = false;
                     goto exit_console;
                 }
-                
+
                 telnetBuffer[bytesRead++] = c;
             }
-            
+
             if (bytesRead > 0) {
                 Serial1.write(telnetBuffer, bytesRead);
                 dataProcessed = true;
@@ -166,7 +187,6 @@ void handleUARTConsole(WiFiClient &client) {
             
             if (bytesRead > 0) {
                 client.write(uartBuffer, bytesRead);
-                client.flush(); // Force immediate transmission
                 dataProcessed = true;
                 lastActivity = millis();
             }
@@ -192,9 +212,8 @@ void handleUARTConsole(WiFiClient &client) {
 exit_console:
     // Restore original task priority
     vTaskPrioritySet(NULL, 2);
-    
+
     Serial1.end();
-    client.flush();
     client.println("UART connection closed.");
 }
 
@@ -203,7 +222,7 @@ void handleTelnetServer(void *parameter) {
     telnetServer.begin();
     while (true) {
         if (!telnetClient || !telnetClient.connected()) {
-            telnetClient = telnetServer.available();
+            telnetClient = telnetServer.accept();
             if (telnetClient) {
                 Serial.println("New Telnet connection!");
                 telnetClient.println("ESP32 Telnet Server\nAvailable commands: status, reset, console, poweron, poweroff, poweron -c");
@@ -221,16 +240,19 @@ void handleTelnetServer(void *parameter) {
             }
 
             if (command == "status") {
-                String macAddress = WiFi.macAddress();
-                macAddress.replace(":", "-"); // Optional: Format with dashes instead of colons
+                String wifiMAC = WiFi.macAddress();
+                wifiMAC.toLowerCase();
+                String monitoringMAC = formatMAC(targetMAC);
                 telnetClient.printf(
                     "Wi-Fi SSID: %s\n"
                     "IP Address: %s\n"
                     "MAC Address: %s\n"
+                    "Monitoring MAC: %s\n"
                     "Device Status: %s\n",
                     WIFI_SSID,
                     WiFi.localIP().toString().c_str(),
-                    macAddress.c_str(),
+                    wifiMAC.c_str(),
+                    monitoringMAC.c_str(),
                     isDeviceOn() ? "ON" : "OFF"
                 );
             } else if (command == "reset") {
@@ -261,6 +283,8 @@ void handleTelnetServer(void *parameter) {
                 if (isDeviceOn()) {
                     telnetClient.println("Turning device off...");
                     power_button(500);
+                    vTaskDelay(pdMS_TO_TICKS(200));
+                    power_button(500);
                 } else {
                     telnetClient.println("Error: Device is already OFF.");
                 }
@@ -290,16 +314,14 @@ void handleTelnetServer(void *parameter) {
 void setup() {
     Serial.begin(115200);
 
-    // Configurar pines
-    pinMode(RELAY_PIN, OUTPUT);
-    pinMode(GREEN_LED, OUTPUT);
-    pinMode(RED_LED, OUTPUT);
-    pinMode(BLUE_LED, OUTPUT);
-    pinMode(DEVICE_STATUS_PIN, INPUT_PULLDOWN);
-    pinMode(ONBOARD_LED, OUTPUT);  // Configurar el LED onboard como salida
-    digitalWrite(RELAY_PIN, LOW);
+    pinMode(PIN_POWER_CTRL, OUTPUT);
+    pinMode(PIN_DEVICE_STATUS, INPUT_PULLDOWN);
+    digitalWrite(PIN_POWER_CTRL, LOW);
 
-    // Conectar a la red WiFi
+    neopixel.begin();
+    neopixel.setBrightness(NEOPIXEL_BRIGHTNESS);
+    neopixel.show();
+
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     Serial.print("Conectando a WiFi");
     while (WiFi.status() != WL_CONNECTED) {
@@ -307,17 +329,12 @@ void setup() {
         Serial.print(".");
     }
     Serial.printf("\nConectado a WiFi, IP: %s\n", WiFi.localIP().toString().c_str());
-    blinkLED(ONBOARD_LED, 10, 200);  // Parpadea LED onboard (conectado)
+    blinkNeoPixel(0, 0, NEOPIXEL_BRIGHTNESS, 10, 200);
     udp.begin(UDP_PORT);
 
-    // Initialize watchdog timer
-    esp_task_wdt_init(30, true); // 30 second timeout
-    esp_task_wdt_add(NULL);
-    
-    // Crear tareas para manejar la conexión WiFi, WoL y Telnet
     xTaskCreatePinnedToCore(checkWiFiConnection, "WiFiCheck", 4096, NULL, 1, NULL, 0);
     xTaskCreatePinnedToCore(checkWakeOnLan, "WoL", 4096, NULL, 1, NULL, 0);
-    xTaskCreatePinnedToCore(handleTelnetServer, "TelnetServer", 8192, NULL, 2, NULL, 1); // Higher priority, more stack, core 1
+    xTaskCreatePinnedToCore(handleTelnetServer, "TelnetServer", 8192, NULL, 2, NULL, 1);
 }
 
 void loop() {

@@ -167,3 +167,8 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+bkp/
+*bkp*
+CLAUDE.md
+.claude/
